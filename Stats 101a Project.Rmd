@@ -1,0 +1,267 @@
+---
+title: "Stats 101A Final Project"
+author: "Hashim Bhat (705372204)"
+date: "2023-03-18"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("Hmisc", repos = "http://cran.us.r-project.org")
+library(Hmisc)
+```
+
+
+## Introduction
+
+My research question for this project is: What lifestyle factors make the best linear model for predicting a students grades according to the dataset? 
+
+
+The dataset is from kaggle and it is called "Student Alcohol Consumption" by UCI Machine Learning. Source: https://www.kaggle.com/datasets/uciml/student-alcohol-consumption
+The data wwas obtained in a survey of students' math and portuguese courses in secondary school. It contains information relating to the social lives, study habits, and family backgrounds of 395 students. Since these variables can all impact a students final grade, I thought it was justified to do multiple regression analysis. The students final grade (The G3 column in the dataset) is the response variable and the lifestyle/social/background factors are the explanatory variables. 
+
+**Structure**
+
+First, I will display the summary statistics of the data such as mean, sd, plots, etc.
+
+Then I will conduct multiple regression analysis and interpret the results as I go along. First I will make a full linear model that includes all of the explanatory variables, and I will reduce it to the ones that show significance. I will then make diagnostic plots and perform any transformations if appropriate. I will check for multicollinearity issues and perform relevant tests for this. I will then use variable selection to select my final model. 
+
+Finally, I will state the conclusion of my findings, as well as the limitations of my model and how it could be improved. 
+
+
+**Reading the data + Setup**
+
+```{r}
+student <- read.csv("student-mat.csv")
+head(student)
+
+# I didn't include every column because the linear model summary would be too long but I tried to include every variable that I thought could impact a student's grade so that the model doesn't have omitted variable bias.
+
+newstudent <- student[ ,c(7,8,13,14,15,16,17,18,19,25,26,27,28,33)]
+
+newstudent$schoolsup = factor(newstudent$schoolsup,levels = c('no', 'yes'),labels = c(0, 1))
+newstudent$schoolsup <- as.numeric(as.character(newstudent$schoolsup))
+
+newstudent$famsup = factor(newstudent$famsup,levels = c('no', 'yes'),labels = c(0, 1))
+newstudent$famsup <- as.numeric(as.character(newstudent$famsup))
+
+newstudent$paid = factor(newstudent$paid,levels = c('no', 'yes'),labels = c(0, 1))
+newstudent$paid <- as.numeric(as.character(newstudent$paid))
+
+newstudent$activities = factor(newstudent$activities,levels = c('no', 'yes'),labels = c(0, 1))
+newstudent$activities <- as.numeric(as.character(newstudent$activities))
+
+
+
+# Scale final grade so that it is out of 100
+newstudent$G3 <- newstudent$G3 * 5
+head(newstudent)
+```
+
+
+## Data Description
+
+**Plots**
+
+We will be focusing on the first row of these diagrams to examine the effect of the explanatory variables on the response variable. For a lot of the explanatory variables, the data was grouped into ranges/brackets and then expressed in terms of those brackets, which makes our plots a lot harder to analyze. Nevertheless, there are still some clear trends. 
+
+
+```{r}
+pairs(newstudent[,c(14,1:4)])
+```
+Above, we can see upward trends in Mothers Education, Fathers Education, and downward trend in travel time.
+
+
+```{r}
+pairs(newstudent[,c(14,5:8)])
+```
+Above, we can see downward trend in failures.
+
+
+```{r}
+pairs(newstudent[,c(14,9:13)])
+```
+Above, we can see a downward trend in Workday Alcohol Consumption (Dalc)
+
+
+**Correlations**
+
+```{r}
+cor(newstudent)
+```
+
+Nothing notable about the correlations of the explanatory variables on G3 (The Response Variable). In regards to the correlations of the explanatory variables with each other, Workday Alcohol Consumption (Dalc) seems to be moderately positively correlated with Weekend Alcohol Consumption (Walc). The correlation is 0.647 so there is a correlation but it might not be high enough to cause a multicolinearity issue but we can check this later on in the report. 
+
+
+**Mean, Standard Deviation, Quartiles**
+
+```{r}
+summary(newstudent)
+```
+
+**Distributions of Variables**
+
+```{r}
+hist.data.frame(newstudent[,1:8])
+```
+```{r}
+hist.data.frame(newstudent[,9:14])
+```
+
+
+## Results and Interpretation 
+
+**Finding Our Reduced Model**
+
+```{r}
+regmod <- lm(G3~., data = newstudent)
+summary(regmod)
+```
+
+From the Linear Model above, the high Overall F statistic and small p-value of this linear model indicates that at least one of our explanatory variables is statistically significant
+Medu, failures, famsup, freetime and goout are significant according to a significance level of 0.1
+
+
+
+```{r}
+anova(regmod)
+```
+From the Anova table above, Medu, travel time, study time, failures, schoolsup, famsup, and goout are significant according to a significance level of 0.1
+
+
+
+```{r}
+# Make Reduced with all variables that were shown to be significant in either of the tables
+redmod <- lm(G3~Medu+goout+failures+studytime+freetime+schoolsup+traveltime+famsup, data = newstudent)
+summary(redmod)
+```
+
+```{r}
+# Anova of reduced model
+anova(redmod)
+```
+Only difference between the Anova and summary tables of reduced model is the significance of school up. We will include it in the new reduced model, and omit the variables that were shown to be insignificant in both tables. 
+
+```{r}
+# New reduced model 
+redmod2 <- lm(G3~Medu+goout+failures+schoolsup+famsup, data = newstudent)
+summary(redmod2)
+anova(redmod2)
+```
+
+Schoolsup found to be insignificant at a significance level of 0.1 in the summary table but significant in the ANOVA table. I am going to choose to keep it in the model because it is only insignificant by a small margin in the summary table.
+
+
+
+```{r}
+anova(redmod2, regmod)
+```
+High p value tells us that we should not reject the null hypothesis therefore the reduced model is a better fit 
+
+
+
+
+It is odd that Educational Support variables have negative coefficients so we will do added variable plots to observe the true effect
+```{r}
+library(car) 
+par(mfrow=c(2,2)) 
+avPlot(redmod2,variable="Medu",ask=FALSE) 
+avPlot(redmod2,variable="goout",ask=FALSE) 
+avPlot(redmod2,variable="failures",ask=FALSE) 
+avPlot(redmod2,variable="schoolsup",ask=FALSE)
+avPlot(redmod2,variable="famsup",ask=FALSE)
+```
+
+The educational support variables seem to have no effect as the lines on their added variable plots have almost 0 slope. I will remove them from the model. 
+
+
+```{r}
+# New Reduced Model
+redmod3 <- lm(G3~Medu + goout + failures, data = newstudent)
+summary(redmod3)
+```
+
+
+
+**Diagnostic Plots and Transformations**
+
+```{r}
+par(mfrow=c(2,2))
+plot(redmod3)
+```
+Normal QQ Plot is left skewed, Residual vs fitted and standardized residual plots are not too bad but may show a slight downward trend which could indicate a problem, there are a few leverage points in the Residuals vs Leverage plot which could also indicate a problem with our model. Overall, we should try some transformations to see if the diagnostic plots improve. 
+
+
+
+```{r}
+#powertransformation to multicollinearity doesn't work when there are values of 0 so I replaced them with very small value
+G3new <- replace(newstudent$G3, newstudent$G3 == 0, 1e-8)
+failuresnew <- replace(newstudent$failures, newstudent$failures == 0, 1e-8)
+Medunew <- replace(newstudent$Medu, newstudent$Medu == 0, 1e-8)
+
+```
+
+
+
+```{r}
+attach(newstudent) 
+summary(powerTransform(cbind(G3new,Medunew,failuresnew,goout)~1))
+```
+
+Indicates we should change powers of G3 to 0.41, failures to -0.24, Medu to 0.75
+
+
+```{r}
+transmod <- lm(I(G3^0.41)~+I(failuresnew^-0.24)+goout+I(Medu^0.75))
+summary(transmod)
+```
+
+```{r}
+par(mfrow=c(2,2))
+plot(transmod)
+```
+Diagnostic plot look much worse than original. Also the goout variable is no longer significant according to the summary table. So the original model seems better.
+
+
+
+```{r}
+vif(redmod3)
+```
+No issue with multicolinearity in our reduced model 
+
+
+```{r}
+backAIC <- step(redmod3, direction="backward", data=newstudent)
+```
+
+This backwards AIC test confirms that there is no multicolinearity because the model stayed the same
+
+
+## Discussion
+
+My Final Model:
+
+```{r}
+summary(redmod3)
+```
+
+
+
+Overall, my conclusion is that the lifestyle factors from our data that best predict final grades are Frequency of going out with friends which has a negative effect, Mothers Education which has a positive effect, and number of past class failures which has a negative effect. 
+
+Holding goout and failures constant, increasing Mothers Education by 1 unit, increases final grades by 3.1373 points (grade is out of 100).
+
+Holding Medu and Failures constant, increasing goout by 1 unit decreases final grade by 2.1304.
+
+Holding Medu and goout constant, increases the number of past classes failed by 1 decreases the final grade by 9.6118.
+
+All of these inferences make sense contextually. Mothers that are more educated could be more involved in their child's school life and could tutor them, therefore the student achieves better grades. Students that have failed a lot of past classes have a record of being unsuccessful when it comes to exams so you would expect them to have lower grades. The most surprising/questionable find is that students who go out more get lower grades. This could make sense however, because students could be spending less time studying if they spend more time going out and therefore get lower grades, and kids who spend a lot of time studying could have less time to go out. 
+
+The most surprising find in the analysis was that study time was not found to have a statistically significantly postive effect on final grades. This indicates a clear problem with either the data or the analysis because it is established in the real world that studying more is correlated with getting better grades. 
+
+One big limitation of the analysis is the grouping of data for the explanatory variables into categories, rather than just presenting the raw data. If the data was raw, we would have a greater range of numbers that represent more individual observations, therefore we would draw better inferences from our analysis. So in the future, I would pick a dataset that had raw observations to improve my model. Another limitation is that I may not have included every relevant explanatory variable that contributes to a students final grade, therefore the analysis could suffer from an omission bias issue which could make the model inaccurate.
+
+
+
